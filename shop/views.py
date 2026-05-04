@@ -1,0 +1,101 @@
+from rest_framework import viewsets, permissions, status, filters, parsers
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Category, Product, Order
+from .serializers import (
+    CategorySerializer, ProductSerializer, ProductListSerializer,
+    OrderCreateSerializer, OrderReadSerializer
+)
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all().order_by('order')
+    serializer_class = CategorySerializer
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+
+from .models import Addon
+from .serializers import AddonSerializer
+
+class AddonViewSet(viewsets.ModelViewSet):
+    queryset = Addon.objects.all().order_by('name')
+    serializer_class = AddonSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all().select_related('category').prefetch_related('available_addons')
+    lookup_field = 'pk'
+    permission_classes = [permissions.AllowAny]
+    filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category__slug', 'is_box', 'is_featured']
+    search_fields    = ['name', 'description']
+    ordering_fields  = ['price', 'name', 'created_at']
+    parser_classes   = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ProductListSerializer
+        return ProductSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'featured', 'boxes']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        qs = self.get_queryset().filter(is_featured=True)[:6]
+        serializer = ProductListSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def boxes(self, request):
+        qs = self.get_queryset().filter(is_box=True)
+        serializer = ProductListSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all().prefetch_related('items__product')
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return OrderCreateSerializer
+        return OrderReadSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order = serializer.save()
+        try:
+            from .notifications import notify_new_order
+            notify_new_order(order)
+        except Exception:
+            pass
+        read_serializer = OrderReadSerializer(order, context={'request': request})
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAdminUser])
+    def update_status(self, request, pk=None):
+        order = self.get_object()
+        new_status = request.data.get('status')
+        if new_status not in dict(Order.Status.choices):
+            return Response({'error': 'Statut invalide.'}, status=400)
+        order.status = new_status
+        order.save(update_fields=['status'])
+        return Response({'status': order.status, 'display': order.get_status_display()})
