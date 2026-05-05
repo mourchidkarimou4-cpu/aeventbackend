@@ -10,17 +10,24 @@ from .serializers import (
 )
 
 
-class FormationViewSet(viewsets.ReadOnlyModelViewSet):
+class FormationViewSet(viewsets.ModelViewSet):
     queryset = Formation.objects.filter(
         status__in=['published', 'full']
     ).prefetch_related('reservations')
-    permission_classes = [permissions.AllowAny]
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['level', 'is_online', 'is_featured']
     search_fields = ['title', 'description', 'instructor_name']
     ordering_fields = ['start_datetime', 'price']
 
     def get_serializer_class(self):
+        from rest_framework.permissions import IsAdminUser
+        if self.request.user and self.request.user.is_staff:
+            from .serializers import FormationAdminSerializer
+            return FormationAdminSerializer
         if self.action == 'retrieve':
             return FormationDetailSerializer
         return FormationListSerializer

@@ -87,3 +87,17 @@ class ReservationReadSerializer(serializers.ModelSerializer):
             'amount':      str(obj.formation.current_price),
             'reference':   obj.reference,
         }
+
+
+class FormationAdminSerializer(serializers.ModelSerializer):
+    available_seats   = serializers.IntegerField(read_only=True)
+    fill_percentage   = serializers.IntegerField(read_only=True)
+    current_price     = serializers.DecimalField(max_digits=10, decimal_places=0, read_only=True)
+    reservations_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Formation
+        fields = '__all__'
+
+    def get_reservations_count(self, obj):
+        return obj.reservations.count()
