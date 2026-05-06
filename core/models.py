@@ -53,3 +53,17 @@ class GaleriePhoto(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.category})"
+
+
+class Newsletter(models.Model):
+    email      = models.EmailField(unique=True, verbose_name="Email")
+    name       = models.CharField(max_length=100, blank=True)
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Abonné newsletter"
+        verbose_name_plural = "Abonnés newsletter"
+
+    def __str__(self):
+        return self.email

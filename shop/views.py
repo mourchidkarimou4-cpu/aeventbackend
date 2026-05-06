@@ -99,3 +99,48 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status = new_status
         order.save(update_fields=['status'])
         return Response({'status': order.status, 'display': order.get_status_display()})
+
+
+from rest_framework.decorators import api_view, permission_classes as pc
+from rest_framework.permissions import AllowAny
+
+@api_view(['POST'])
+@pc([AllowAny])
+def validate_promo(request):
+    code = request.data.get('code', '').strip().upper()
+    total = float(request.data.get('total', 0))
+
+    try:
+        promo = CodePromo.objects.get(code=code)
+    except CodePromo.DoesNotExist:
+        return Response({'valid': False, 'message': 'Code promo invalide.'}, status=400)
+
+    valid, message = promo.is_valid(total)
+    if not valid:
+        return Response({'valid': False, 'message': message}, status=400)
+
+    discount = promo.calculate_discount(total)
+    return Response({
+        'valid': True,
+        'code': promo.code,
+        'discount_type': promo.discount_type,
+        'discount_value': float(promo.discount_value),
+        'discount_amount': float(discount),
+        'new_total': float(total - discount),
+        'message': f"Code appliqué — {discount:,.0f} FCFA de réduction !",
+    })
+
+
+class CodePromoViewSet(viewsets.ModelViewSet):
+    from .models import CodePromo as CP
+    queryset = CP.objects.all().order_by('-created_at')
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class CodePromoSerializer(serializers.ModelSerializer):
+            class Meta:
+                from .models import CodePromo as CP2
+                model = CP2
+                fields = '__all__'
+        return CodePromoSerializer

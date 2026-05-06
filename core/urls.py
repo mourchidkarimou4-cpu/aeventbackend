@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import SiteSettingsView, GaleriePhotoViewSet, ChangePasswordView
+from .views import SiteSettingsView, GaleriePhotoViewSet, ChangePasswordView, NewsletterView, NewsletterListView
 from .stats import DashboardStatsView
 
 router = DefaultRouter()

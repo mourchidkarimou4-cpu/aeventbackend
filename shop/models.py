@@ -179,3 +179,43 @@ class OrderItem(models.Model):
     @property
     def line_total(self):
         return (self.unit_price + self.addons_total) * self.quantity
+
+
+class CodePromo(models.Model):
+    code        = models.CharField(max_length=50, unique=True, verbose_name="Code")
+    description = models.CharField(max_length=200, blank=True)
+    discount_type = models.CharField(max_length=10, choices=[
+        ('percent', 'Pourcentage'),
+        ('fixed',   'Montant fixe'),
+    ], default='percent')
+    discount_value = models.DecimalField(max_digits=10, decimal_places=0)
+    min_order      = models.DecimalField(max_digits=10, decimal_places=0, default=0)
+    max_uses       = models.PositiveIntegerField(default=100)
+    used_count     = models.PositiveIntegerField(default=0)
+    is_active      = models.BooleanField(default=True)
+    expires_at     = models.DateTimeField(null=True, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Code promo"
+        verbose_name_plural = "Codes promo"
+
+    def __str__(self):
+        return f"{self.code} — {self.discount_value}{'%' if self.discount_type == 'percent' else ' FCFA'}"
+
+    def is_valid(self, order_total=0):
+        from django.utils import timezone
+        if not self.is_active:
+            return False, "Ce code promo n'est plus actif."
+        if self.used_count >= self.max_uses:
+            return False, "Ce code promo a atteint sa limite d'utilisation."
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False, "Ce code promo a expiré."
+        if order_total < self.min_order:
+            return False, f"Commande minimum de {self.min_order:,.0f} FCFA requise."
+        return True, "Code valide."
+
+    def calculate_discount(self, order_total):
+        if self.discount_type == 'percent':
+            return min(order_total * self.discount_value / 100, order_total)
+        return min(self.discount_value, order_total)
