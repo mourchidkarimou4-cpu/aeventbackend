@@ -67,3 +67,27 @@ class Newsletter(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class AvisClient(models.Model):
+    name       = models.CharField(max_length=100, verbose_name="Nom")
+    email      = models.EmailField(blank=True)
+    note       = models.PositiveSmallIntegerField(default=5, choices=[(i, i) for i in range(1, 6)])
+    message    = models.TextField(verbose_name="Avis")
+    service    = models.CharField(max_length=50, choices=[
+        ('patisserie', 'Pâtisserie'),
+        ('traiteur',   'Traiteur'),
+        ('imprimerie', 'Imprimerie'),
+        ('academy',    'Academy'),
+        ('general',    'Général'),
+    ], default='general')
+    is_approved = models.BooleanField(default=False)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Avis client"
+        verbose_name_plural = "Avis clients"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} — {self.note}/5"

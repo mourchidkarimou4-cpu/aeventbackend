@@ -88,3 +88,67 @@ class NewsletterListView(_APIView):
         subs = Newsletter.objects.filter(is_active=True).order_by('-created_at')
         data = [{'id': s.id, 'email': s.email, 'name': s.name, 'created_at': s.created_at} for s in subs]
         return Response({'count': len(data), 'results': data})
+
+
+from .models import AvisClient
+
+class AvisView(_APIView):
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.AllowAny()]
+
+    def get(self, request):
+        avis = AvisClient.objects.filter(is_approved=True).order_by('-created_at')[:10]
+        data = [{
+            'id': a.id, 'name': a.name, 'note': a.note,
+            'message': a.message, 'service': a.service,
+            'created_at': a.created_at,
+        } for a in avis]
+        return Response(data)
+
+    def post(self, request):
+        name    = request.data.get('name', '').strip()
+        message = request.data.get('message', '').strip()
+        note    = int(request.data.get('note', 5))
+        service = request.data.get('service', 'general')
+        email   = request.data.get('email', '').strip()
+
+        if not name or not message:
+            return Response({'error': 'Nom et message sont obligatoires.'}, status=400)
+
+        avis = AvisClient.objects.create(
+            name=name, message=message, note=note,
+            service=service, email=email, is_approved=False
+        )
+        return Response({'message': 'Merci pour votre avis ! Il sera publié après modération.'}, status=201)
+
+
+class AvisAdminView(_APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        avis = AvisClient.objects.all().order_by('-created_at')
+        data = [{
+            'id': a.id, 'name': a.name, 'note': a.note,
+            'message': a.message, 'service': a.service,
+            'email': a.email, 'is_approved': a.is_approved,
+            'created_at': a.created_at,
+        } for a in avis]
+        return Response(data)
+
+    def patch(self, request, pk):
+        try:
+            avis = AvisClient.objects.get(pk=pk)
+            avis.is_approved = request.data.get('is_approved', not avis.is_approved)
+            avis.save()
+            return Response({'is_approved': avis.is_approved})
+        except AvisClient.DoesNotExist:
+            return Response({'error': 'Avis introuvable.'}, status=404)
+
+    def delete(self, request, pk):
+        try:
+            AvisClient.objects.get(pk=pk).delete()
+            return Response(status=204)
+        except AvisClient.DoesNotExist:
+            return Response({'error': 'Avis introuvable.'}, status=404)
