@@ -51,8 +51,16 @@ class GaleriePhoto(models.Model):
         verbose_name_plural = "Photos galerie"
         ordering = ['order', '-created_at']
 
+    def save(self, *args, **kwargs):
+        if self.image:
+            try:
+                self.image = compress_image(self.image)
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.title} ({self.category})"
+        return f"{self.title} ({self.category})" 
 
 
 class Newsletter(models.Model):
@@ -89,8 +97,16 @@ class AvisClient(models.Model):
         verbose_name_plural = "Avis clients"
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if self.photo:
+            try:
+                self.photo = compress_image(self.photo, max_size=(600, 600))
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.name} — {self.note}/5"
+        return f"{self.name} — {self.note}/5" 
 
 
 class Temoignage(models.Model):
@@ -109,3 +125,36 @@ class Temoignage(models.Model):
 
     def __str__(self):
         return f"{self.name} — {self.note}/5"
+
+
+def compress_image(image_field, max_size=(800, 800), quality=85):
+    """Compresse une image uploadée."""
+    from PIL import Image
+    import io
+    from django.core.files.uploadedfile import InMemoryUploadedFile
+    import sys
+
+    if not image_field:
+        return image_field
+
+    img = Image.open(image_field)
+
+    # Convertir en RGB si nécessaire
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+
+    # Redimensionner si trop grande
+    img.thumbnail(max_size, Image.LANCZOS)
+
+    # Sauvegarder en mémoire
+    output = io.BytesIO()
+    img.save(output, format='WEBP', quality=quality, optimize=True)
+    output.seek(0)
+
+    return InMemoryUploadedFile(
+        output, 'ImageField',
+        f"{image_field.name.rsplit('.', 1)[0]}.webp",
+        'image/webp',
+        sys.getsizeof(output),
+        None
+    )
