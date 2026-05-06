@@ -91,3 +91,21 @@ class AvisClient(models.Model):
 
     def __str__(self):
         return f"{self.name} — {self.note}/5"
+
+
+class Temoignage(models.Model):
+    name     = models.CharField(max_length=100, verbose_name="Nom du client")
+    role     = models.CharField(max_length=200, blank=True, verbose_name="Rôle / Occasion")
+    photo    = models.ImageField(upload_to='temoignages/', null=True, blank=True, verbose_name="Photo / Capture")
+    note     = models.PositiveSmallIntegerField(default=5, choices=[(i, i) for i in range(1, 6)])
+    is_active = models.BooleanField(default=True)
+    order    = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Témoignage"
+        verbose_name_plural = "Témoignages"
+        ordering = ['order', '-created_at']
+
+    def __str__(self):
+        return f"{self.name} — {self.note}/5"

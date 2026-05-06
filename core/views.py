@@ -152,3 +152,23 @@ class AvisAdminView(_APIView):
             return Response(status=204)
         except AvisClient.DoesNotExist:
             return Response({'error': 'Avis introuvable.'}, status=404)
+
+
+from .models import Temoignage
+
+class TemoignageViewSet(viewsets.ModelViewSet):
+    queryset = Temoignage.objects.filter(is_active=True).order_by('order', '-created_at')
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class TemoignageSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = Temoignage
+                fields = '__all__'
+        return TemoignageSerializer
