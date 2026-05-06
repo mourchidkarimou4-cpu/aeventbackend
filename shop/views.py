@@ -144,3 +144,23 @@ class CodePromoViewSet(viewsets.ModelViewSet):
                 model = CP2
                 fields = '__all__'
         return CodePromoSerializer
+
+
+from .models import ZoneLivraison
+
+class ZoneLivraisonViewSet(viewsets.ModelViewSet):
+    queryset = ZoneLivraison.objects.filter(is_active=True).order_by('order')
+    permission_classes = [permissions.AllowAny]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class ZoneSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = ZoneLivraison
+                fields = '__all__'
+        return ZoneSerializer
+
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]

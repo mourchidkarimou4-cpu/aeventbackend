@@ -219,3 +219,20 @@ class CodePromo(models.Model):
         if self.discount_type == 'percent':
             return min(order_total * self.discount_value / 100, order_total)
         return min(self.discount_value, order_total)
+
+
+class ZoneLivraison(models.Model):
+    nom         = models.CharField(max_length=100, verbose_name="Zone")
+    description = models.CharField(max_length=200, blank=True)
+    tarif       = models.DecimalField(max_digits=10, decimal_places=0, verbose_name="Tarif (FCFA)")
+    delai       = models.CharField(max_length=50, default="2-4h", verbose_name="Délai estimé")
+    is_active   = models.BooleanField(default=True)
+    order       = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Zone de livraison"
+        verbose_name_plural = "Zones de livraison"
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.nom} — {self.tarif} FCFA"
