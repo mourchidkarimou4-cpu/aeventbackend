@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/shop/',    include('shop.urls')),
     path('api/events/',  include('events.urls')),
     path('api/academy/', include('academy.urls')),
+    path('api/chat/', include('chat.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # JWT

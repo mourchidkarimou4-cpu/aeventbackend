@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'core',
+    'chat',
     'shop',
     'events',
     'academy',
