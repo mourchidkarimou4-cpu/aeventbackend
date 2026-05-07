@@ -293,3 +293,26 @@ class ProgrammeFidelite(models.Model):
     @property
     def points_pour_reduction(self):
         return self.points // 100  # 100 pts = 1 reduction de 100 FCFA
+
+
+class Parrainage(models.Model):
+    parrain_nom = models.CharField(max_length=100)
+    parrain_wa  = models.CharField(max_length=20)
+    filleul_nom = models.CharField(max_length=100, blank=True)
+    filleul_wa  = models.CharField(max_length=20, blank=True)
+    code        = models.CharField(max_length=20, unique=True)
+    points_gagnes = models.PositiveIntegerField(default=0)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Parrainage"
+        verbose_name_plural = "Parrainages"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            import uuid
+            self.code = f"REF-{str(uuid.uuid4()).upper()[:6]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.parrain_nom} → {self.filleul_nom or '?'}"

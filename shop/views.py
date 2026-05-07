@@ -273,3 +273,22 @@ class FideliteViewSet(viewsets.ModelViewSet):
             'points': fidelite.points,
             'niveau': fidelite.niveau[0],
         })
+
+
+from .models import Parrainage
+
+class ParrainageViewSet(viewsets.ModelViewSet):
+    queryset = Parrainage.objects.all().order_by('-created_at')
+
+    def get_permissions(self):
+        if self.action in ['create', 'list']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class ParrainageSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = Parrainage
+                fields = '__all__'
+        return ParrainageSerializer
