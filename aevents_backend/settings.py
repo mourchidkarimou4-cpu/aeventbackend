@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'django_filters',
     'core',
     'chat',
+    'blog',
     'shop',
     'events',
     'academy',
