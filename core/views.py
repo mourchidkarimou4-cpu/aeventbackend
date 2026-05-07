@@ -172,3 +172,62 @@ class TemoignageViewSet(viewsets.ModelViewSet):
                 model = Temoignage
                 fields = '__all__'
         return TemoignageSerializer
+
+
+from django.contrib.auth.models import User
+from .models import AdminProfile
+
+class AdminUsersView(_APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        users = User.objects.filter(is_staff=True).select_related('admin_profile')
+        data = []
+        for u in users:
+            profile = getattr(u, 'admin_profile', None)
+            data.append({
+                'id': u.id,
+                'username': u.username,
+                'email': u.email,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'is_active': u.is_active,
+                'date_joined': u.date_joined,
+                'role': profile.role if profile else 'super_admin',
+                'phone': profile.phone if profile else '',
+            })
+        return Response(data)
+
+    def post(self, request):
+        username = request.data.get('username')
+        email = request.data.get('email', '')
+        password = request.data.get('password')
+        role = request.data.get('role', 'viewer')
+        phone = request.data.get('phone', '')
+
+        if not username or not password:
+            return Response({'error': 'Username et password requis.'}, status=400)
+
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Ce username existe déjà.'}, status=400)
+
+        user = User.objects.create_user(
+            username=username, email=email, password=password,
+            is_staff=True
+        )
+        AdminProfile.objects.create(user=user, role=role, phone=phone)
+        return Response({
+            'id': user.id, 'username': user.username,
+            'email': user.email, 'role': role,
+        }, status=201)
+
+    def delete(self, request):
+        user_id = request.data.get('user_id')
+        if str(request.user.id) == str(user_id):
+            return Response({'error': 'Vous ne pouvez pas supprimer votre propre compte.'}, status=400)
+        try:
+            user = User.objects.get(id=user_id, is_staff=True)
+            user.delete()
+            return Response(status=204)
+        except User.DoesNotExist:
+            return Response({'error': 'Utilisateur introuvable.'}, status=404)

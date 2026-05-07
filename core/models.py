@@ -158,3 +158,26 @@ def compress_image(image_field, max_size=(800, 800), quality=85):
         sys.getsizeof(output),
         None
     )
+
+
+class AdminProfile(models.Model):
+    ROLES = [
+        ('super_admin', 'Super Administrateur'),
+        ('manager',     'Manager'),
+        ('editor',      'Éditeur'),
+        ('viewer',      'Lecteur'),
+    ]
+    user        = models.OneToOneField('auth.User', on_delete=models.CASCADE, related_name='admin_profile')
+    role        = models.CharField(max_length=20, choices=ROLES, default='viewer')
+    phone       = models.CharField(max_length=20, blank=True)
+    avatar_url  = models.URLField(blank=True)
+    permissions = models.JSONField(default=dict)
+    is_active   = models.BooleanField(default=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Profil admin"
+        verbose_name_plural = "Profils admin"
+
+    def __str__(self):
+        return f"{self.user.username} — {self.role}"
