@@ -265,3 +265,31 @@ class BonCadeau(models.Model):
 
     def __str__(self):
         return f"{self.code} — {self.montant} FCFA"
+
+
+class ProgrammeFidelite(models.Model):
+    client_nom  = models.CharField(max_length=100)
+    client_wa   = models.CharField(max_length=20, unique=True)
+    points      = models.PositiveIntegerField(default=0)
+    total_commandes = models.PositiveIntegerField(default=0)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Programme fidélité"
+        verbose_name_plural = "Programme fidélité"
+        ordering = ['-points']
+
+    def __str__(self):
+        return f"{self.client_nom} — {self.points} pts"
+
+    @property
+    def niveau(self):
+        if self.points >= 5000:   return ('Platine', '#E5E4E2')
+        if self.points >= 2000:   return ('Or', '#FFD700')
+        if self.points >= 500:    return ('Argent', '#C0C0C0')
+        return ('Bronze', '#CD7F32')
+
+    @property
+    def points_pour_reduction(self):
+        return self.points // 100  # 100 pts = 1 reduction de 100 FCFA

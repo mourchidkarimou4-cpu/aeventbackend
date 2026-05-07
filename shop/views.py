@@ -211,3 +211,65 @@ class BonCadeauViewSet(viewsets.ModelViewSet):
             'new_total': max(0, total - discount),
             'message': f'Bon cadeau appliqué — {discount:,.0f} FCFA de réduction !',
         })
+
+
+from .models import ProgrammeFidelite
+
+class FideliteViewSet(viewsets.ModelViewSet):
+    queryset = ProgrammeFidelite.objects.all().order_by('-points')
+
+    def get_permissions(self):
+        if self.action in ['check', 'create']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class FideliteSerializer(serializers.ModelSerializer):
+            niveau = serializers.SerializerMethodField()
+            points_reduction = serializers.IntegerField(source='points_pour_reduction', read_only=True)
+            class Meta:
+                model = ProgrammeFidelite
+                fields = '__all__'
+            def get_niveau(self, obj):
+                return {'label': obj.niveau[0], 'color': obj.niveau[1]}
+        return FideliteSerializer
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def check(self, request):
+        wa = request.data.get('whatsapp', '').strip()
+        if not wa:
+            return Response({'error': 'WhatsApp requis.'}, status=400)
+        try:
+            fidelite = ProgrammeFidelite.objects.get(client_wa=wa)
+            return Response({
+                'found': True,
+                'nom': fidelite.client_nom,
+                'points': fidelite.points,
+                'niveau': fidelite.niveau[0],
+                'color': fidelite.niveau[1],
+                'commandes': fidelite.total_commandes,
+                'reduction_disponible': fidelite.points_pour_reduction,
+            })
+        except ProgrammeFidelite.DoesNotExist:
+            return Response({'found': False, 'message': 'Pas encore inscrit au programme.'})
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def add_points(self, request):
+        wa = request.data.get('whatsapp', '').strip()
+        nom = request.data.get('nom', '').strip()
+        points = int(request.data.get('points', 0))
+        if not wa or not points:
+            return Response({'error': 'WhatsApp et points requis.'}, status=400)
+        fidelite, created = ProgrammeFidelite.objects.get_or_create(
+            client_wa=wa,
+            defaults={'client_nom': nom, 'points': 0, 'total_commandes': 0}
+        )
+        fidelite.points += points
+        fidelite.total_commandes += 1
+        fidelite.save()
+        return Response({
+            'success': True,
+            'points': fidelite.points,
+            'niveau': fidelite.niveau[0],
+        })
