@@ -236,3 +236,32 @@ class ZoneLivraison(models.Model):
 
     def __str__(self):
         return f"{self.nom} — {self.tarif} FCFA"
+
+
+import uuid as uuid_lib
+
+class BonCadeau(models.Model):
+    code          = models.CharField(max_length=20, unique=True, verbose_name="Code")
+    montant       = models.DecimalField(max_digits=10, decimal_places=0)
+    acheteur_nom  = models.CharField(max_length=100, verbose_name="Nom acheteur")
+    acheteur_wa   = models.CharField(max_length=20, verbose_name="WhatsApp acheteur")
+    destinataire_nom = models.CharField(max_length=100, blank=True, verbose_name="Nom destinataire")
+    destinataire_wa  = models.CharField(max_length=20, blank=True, verbose_name="WhatsApp destinataire")
+    message       = models.TextField(blank=True, verbose_name="Message personnalisé")
+    is_used       = models.BooleanField(default=False)
+    is_paid       = models.BooleanField(default=False)
+    expires_at    = models.DateTimeField(null=True, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Bon cadeau"
+        verbose_name_plural = "Bons cadeaux"
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = f"GIFT-{str(uuid_lib.uuid4()).upper()[:8]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} — {self.montant} FCFA"

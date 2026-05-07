@@ -164,3 +164,50 @@ class ZoneLivraisonViewSet(viewsets.ModelViewSet):
         if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
+
+
+from .models import BonCadeau
+
+class BonCadeauViewSet(viewsets.ModelViewSet):
+    queryset = BonCadeau.objects.all().order_by('-created_at')
+
+    def get_permissions(self):
+        if self.action in ['create', 'validate_bon']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class BonSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = BonCadeau
+                fields = '__all__'
+        return BonSerializer
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def validate_bon(self, request):
+        code = request.data.get('code', '').strip().upper()
+        total = float(request.data.get('total', 0))
+        try:
+            bon = BonCadeau.objects.get(code=code)
+        except BonCadeau.DoesNotExist:
+            return Response({'valid': False, 'message': 'Bon cadeau invalide.'}, status=400)
+
+        if not bon.is_paid:
+            return Response({'valid': False, 'message': 'Ce bon cadeau n\'a pas encore été activé.'}, status=400)
+        if bon.is_used:
+            return Response({'valid': False, 'message': 'Ce bon cadeau a déjà été utilisé.'}, status=400)
+
+        from django.utils import timezone
+        if bon.expires_at and timezone.now() > bon.expires_at:
+            return Response({'valid': False, 'message': 'Ce bon cadeau a expiré.'}, status=400)
+
+        discount = min(float(bon.montant), total)
+        return Response({
+            'valid': True,
+            'code': bon.code,
+            'montant': float(bon.montant),
+            'discount_amount': discount,
+            'new_total': max(0, total - discount),
+            'message': f'Bon cadeau appliqué — {discount:,.0f} FCFA de réduction !',
+        })
