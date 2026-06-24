@@ -41,7 +41,7 @@ class GaleriePhoto(models.Model):
     ]
     title    = models.CharField(max_length=200, verbose_name="Titre")
     category = models.CharField(max_length=50, choices=CATEGORIES, default='patisserie')
-    image    = models.ImageField(upload_to='galerie/', verbose_name="Photo")
+    image    = models.URLField(verbose_name="Photo", blank=True, null=True)
     order    = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,11 +52,6 @@ class GaleriePhoto(models.Model):
         ordering = ['order', '-created_at']
 
     def save(self, *args, **kwargs):
-        if self.image:
-            try:
-                self.image = compress_image(self.image)
-            except Exception:
-                pass
         super().save(*args, **kwargs)
 
     def __str__(self):

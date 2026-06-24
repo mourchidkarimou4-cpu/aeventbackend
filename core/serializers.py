@@ -32,7 +32,7 @@ def absolute_file_url(request, value):
 
 class GaleriePhotoSerializer(serializers.ModelSerializer):
     category_display = serializers.CharField(source='get_category_display', read_only=True)
-    image = serializers.ImageField(required=False)
+    image = serializers.CharField(required=False, allow_blank=True)
     image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
