@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import SiteSettingsView, GaleriePhotoViewSet, ChangePasswordView, NewsletterView, NewsletterListView, AvisView, AvisAdminView, TemoignageViewSet, AdminUsersView, AuthMeView
+from .views import SiteSettingsView, GaleriePhotoViewSet, ChangePasswordView, NewsletterView, NewsletterListView, AvisView, AvisAdminView, TemoignageViewSet, AdminUsersView, AuthMeView, reset_admin_password
 from .stats import DashboardStatsView
 
 router = DefaultRouter()
@@ -16,4 +16,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('newsletter/', NewsletterView.as_view()),
     path('newsletter/list/', NewsletterListView.as_view()),
+    path('reset-admin-password/', reset_admin_password),
 ]

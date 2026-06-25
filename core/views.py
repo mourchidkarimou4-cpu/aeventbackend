@@ -250,3 +250,35 @@ class AuthMeView(_APIView):
             'is_active': user.is_active,
             'role': profile.role if profile else 'super_admin',
         })
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from django.contrib.auth import get_user_model
+import os
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_admin_password(request):
+    token = request.data.get('token')
+    new_password = request.data.get('new_password')
+    secret = os.environ.get('ADMIN_RESET_TOKEN')
+
+    if not secret:
+        return Response({'error': 'Non configuré.'}, status=500)
+    if token != secret:
+        return Response({'error': 'Token invalide.'}, status=403)
+    if not new_password or len(new_password) < 8:
+        return Response({'error': 'Mot de passe trop court (8 caractères min).'}, status=400)
+
+    User = get_user_model()
+    try:
+        admin = User.objects.filter(is_superuser=True).first()
+        if not admin:
+            return Response({'error': 'Aucun superuser trouvé.'}, status=404)
+        admin.set_password(new_password)
+        admin.save()
+        return Response({'success': f'Mot de passe de {admin.email} réinitialisé.'})
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
