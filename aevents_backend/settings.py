@@ -168,6 +168,9 @@ from datetime import timedelta
 JWT_ACCESS_COOKIE = 'access'
 JWT_REFRESH_COOKIE = 'refresh'
 JWT_COOKIE_SECURE = not DEBUG
+# Cross-site (frontend Vercel ≠ backend Render) : SameSite=None requis en prod.
+# En local (même site localhost) : Lax suffit.
+JWT_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 
 REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = [
     'core.authentication.CookieJWTAuthentication',

@@ -476,7 +476,7 @@ def _set_jwt_cookies(response, access, refresh=None):
         max_age=None,  # cookie de session : recréé par la rotation du refresh
         httponly=True,
         secure=settings.JWT_COOKIE_SECURE,
-        samesite='Lax',
+        samesite=settings.JWT_COOKIE_SAMESITE,
         path='/',
     )
     if refresh:
@@ -486,7 +486,7 @@ def _set_jwt_cookies(response, access, refresh=None):
             max_age=REFRESH_COOKIE_MAX_AGE,
             httponly=True,
             secure=settings.JWT_COOKIE_SECURE,
-            samesite='Lax',
+            samesite=settings.JWT_COOKIE_SAMESITE,
             path='/',
         )
     return response
