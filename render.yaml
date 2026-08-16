@@ -18,9 +18,7 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         value: https://aeventfrontend.vercel.app
       - key: DATABASE_URL
-        fromDatabase:
-          name: aevents-db
-          property: connectionString
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -43,7 +41,3 @@ services:
         sync: false
       - key: DEFAULT_FROM_EMAIL
         sync: false
-
-databases:
-  - name: aevents-db
-    plan: free
