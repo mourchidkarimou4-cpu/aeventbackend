@@ -9,6 +9,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Hôte Render .onrender.com : accepté quoi qu'il arrive (le service est antérieur
+# au render.yaml, la variable ALLOWED_HOSTS n'a donc jamais été appliquée).
+if not DEBUG:
+    for h in ('.onrender.com',):
+        if h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(h)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
