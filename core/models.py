@@ -3,7 +3,7 @@ from django.db import models
 
 class SiteSettings(models.Model):
     whatsapp_number = models.CharField(max_length=20, default='+22900000000')
-    whatsapp_message_default = models.TextField(default="Bonjour A'Events Bénin, je souhaite avoir des informations.")
+    whatsapp_message_default = models.TextField(default="Bonjour Arishebola Multi-service, je souhaite avoir des informations.")
     address = models.TextField(default="Cotonou, Bénin")
     email_contact = models.EmailField(blank=True, default='contact@aevents-benin.com')
     instagram_url = models.URLField(blank=True)
@@ -19,7 +19,7 @@ class SiteSettings(models.Model):
         verbose_name_plural = "Paramètres du site"
 
     def __str__(self):
-        return "Paramètres A'Events Bénin"
+        return "Paramètres Arishebola Multi-service"
 
     def save(self, *args, **kwargs):
         self.pk = 1

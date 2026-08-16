@@ -1,10 +1,10 @@
-# A'Events — Service systemd pour gunicorn (VPS)
+# Arishebola Multi-service — Service systemd pour gunicorn (VPS)
 # Copier dans /etc/systemd/system/aevents-backend.service puis :
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now aevents-backend
 
 [Unit]
-Description=A'Events Django (gunicorn)
+Description=Arishebola Multi-service Django (gunicorn)
 After=network.target
 
 [Service]

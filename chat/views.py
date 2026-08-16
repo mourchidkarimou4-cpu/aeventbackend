@@ -95,6 +95,6 @@ class MessageChatViewSet(viewsets.ModelViewSet):
             session_id=session_id,
             contenu=contenu,
             is_admin=True,
-            client_nom="A'Events",
+            client_nom="AMS",
         )
         return Response(MessageChatSerializer(msg).data, status=201)
