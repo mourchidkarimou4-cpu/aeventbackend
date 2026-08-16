@@ -17,9 +17,10 @@ urlpatterns = [
     path('api/blog/', include('blog.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# JWT
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+# JWT (login protégé contre le brute-force, cookies HttpOnly)
+from core.views import CookieTokenObtainPairView, CookieTokenRefreshView, LogoutView
 urlpatterns += [
-    path('api/auth/token/',         TokenObtainPairView.as_view()),
-    path('api/auth/token/refresh/', TokenRefreshView.as_view()),
+    path('api/auth/token/',         CookieTokenObtainPairView.as_view()),
+    path('api/auth/token/refresh/', CookieTokenRefreshView.as_view()),
+    path('api/auth/logout/',        LogoutView.as_view()),
 ]

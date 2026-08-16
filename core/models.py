@@ -51,11 +51,8 @@ class GaleriePhoto(models.Model):
         verbose_name_plural = "Photos galerie"
         ordering = ['order', '-created_at']
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-
     def __str__(self):
-        return f"{self.title} ({self.category})" 
+        return f"{self.title} ({self.category})"
 
 
 class Newsletter(models.Model):
@@ -92,12 +89,8 @@ class AvisClient(models.Model):
         verbose_name_plural = "Avis clients"
         ordering = ['-created_at']
 
-    def save(self, *args, **kwargs):
-        # Note: AvisClient n'a pas de champ 'photo', cette méthode était boguée
-        super().save(*args, **kwargs)
-
     def __str__(self):
-        return f"{self.name} — {self.note}/5" 
+        return f"{self.name} — {self.note}/5"
 
 
 class Temoignage(models.Model):

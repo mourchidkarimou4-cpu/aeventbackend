@@ -1,0 +1,22 @@
+# A'Events — Service systemd pour gunicorn (VPS)
+# Copier dans /etc/systemd/system/aevents-backend.service puis :
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aevents-backend
+
+[Unit]
+Description=A'Events Django (gunicorn)
+After=network.target
+
+[Service]
+Type=exec
+User=aevents
+Group=aevents
+WorkingDirectory=/opt/aevents/aeventbackend-main
+# Le .env est lu automatiquement (python-dotenv) par settings.py
+EnvironmentFile=/opt/aevents/aeventbackend-main/.env
+ExecStart=/opt/aevents/venv/bin/gunicorn aevents_backend.wsgi:application --workers 3 --bind 127.0.0.1:8000 --timeout 60 --access-logfile - --error-logfile -
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

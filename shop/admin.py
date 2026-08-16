@@ -1,9 +1,10 @@
 ## ─── shop/admin.py ──────────────────────────────────────────────────────────
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.db.models import Sum
 from .models import Category, Addon, Product, Order, OrderItem
+from .order_transitions import apply_status_transition
 
 
 @admin.register(Category)
@@ -107,6 +108,17 @@ class OrderAdmin(admin.ModelAdmin):
             color, obj.get_status_display()
         )
     status_badge.short_description = 'Statut'
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            # Les changements de statut via l'admin doivent appliquer les mêmes
+            # effets de bord (stock, code promo, bon cadeau) que l'API.
+            new_status = obj.status
+            ok, error = apply_status_transition(obj, new_status)
+            if not ok:
+                self.message_user(request, error, level=messages.ERROR)
+                return
+        super().save_model(request, obj, form, change)
 
     def total_price_display(self, obj):
         return format_html('<strong>{:,.0f} FCFA</strong>', obj.total_price)

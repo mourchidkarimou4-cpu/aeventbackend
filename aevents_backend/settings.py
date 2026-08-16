@@ -20,6 +20,8 @@ INSTALLED_APPS = [
     'cloudinary',
     'cloudinary_storage',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'core',
@@ -68,7 +70,7 @@ else:
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.environ.get('DB_NAME', 'aevents_db'),
             'USER': os.environ.get('DB_USER', 'aevents_user'),
-            'PASSWORD': os.environ.get('DB_PASSWORD', 'motdepasse_fort'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
             'HOST': os.environ.get('DB_HOST', 'localhost'),
             'PORT': os.environ.get('DB_PORT', '5432'),
         }
@@ -106,13 +108,28 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10000/hour',
-        'user': '50000/hour',
+        'anon': '100/hour',
+        'user': '1000/hour',
+        'admin_reset': '5/hour',
+        'file_upload': '20/hour',
+        'newsletter': '5/hour',
+        'public_post': '60/hour',
+        'login': '20/hour',
+        'orders': '30/hour',
+        'promo_validate': '60/hour',
+        'reservation': '10/hour',
+        'candidature': '10/hour',
+        'avis': '10/hour',
+        'chat_post': '60/hour',
+        'quote_create': '20/hour',
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'PAGE_SIZE_QUERY_PARAM': 'page_size',
+    'MAX_PAGE_SIZE': 100,
 }
 
 # ── CORS ──
@@ -124,12 +141,12 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ── Sécurité production ──
 if not DEBUG:
-    SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
@@ -144,12 +161,16 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50 Mo
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
 
-# ── JWT Auth ──
+# ── JWT Auth (cookies HttpOnly) ──
 from datetime import timedelta
-INSTALLED_APPS += ['rest_framework_simplejwt','rest_framework_simplejwt.token_blacklist']
+
+# Cookies JWT : noms + sécurité
+JWT_ACCESS_COOKIE = 'access'
+JWT_REFRESH_COOKIE = 'refresh'
+JWT_COOKIE_SECURE = not DEBUG
 
 REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = [
-    'rest_framework_simplejwt.authentication.JWTAuthentication',
+    'core.authentication.CookieJWTAuthentication',
 ]
 
 SIMPLE_JWT = {
@@ -160,19 +181,55 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-import cloudinary
-cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.environ.get('CLOUDINARY_API_KEY'),
-    api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
+# ── Stockage ──
+# Si les identifiants Cloudinary sont renseignés, les fichiers sont hébergés sur
+# Cloudinary (CDN). Sinon, fallback local dans MEDIA_ROOT (servi par Django en
+# dev, par nginx en production) — le site fonctionne sans aucun compte Cloudinary.
+CLOUDINARY_CONFIGURED = bool(
+    os.environ.get('CLOUDINARY_CLOUD_NAME')
+    and os.environ.get('CLOUDINARY_API_KEY')
+    and os.environ.get('CLOUDINARY_API_SECRET')
 )
+
+STORAGES = {
+    'default': {
+        'BACKEND': (
+            'cloudinary_storage.storage.RawMediaCloudinaryStorage'
+            if CLOUDINARY_CONFIGURED
+            else 'django.core.files.storage.FileSystemStorage'
+        ),
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+if CLOUDINARY_CONFIGURED:
+    import cloudinary
+    cloudinary.config(
+        cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+        api_key=os.environ.get('CLOUDINARY_API_KEY'),
+        api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
+    )
+
+# ── Email ──
+# Si EMAIL_HOST est renseigné dans .env, l'envoi passe par SMTP ; sinon les
+# emails sont affichés dans les logs (backend console) — aucun serveur SMTP
+# n'est requis pour faire fonctionner le site.
+EMAIL_BACKEND = (
+    'django.core.mail.backends.smtp.EmailBackend'
+    if os.environ.get('EMAIL_HOST')
+    else 'django.core.mail.backends.console.EmailBackend'
+)
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'AMS <no-reply@ams.bj>')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() == 'true'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
 CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:5173,http://127.0.0.1:5173'
 ).split(',')
-
-# Cloudinary Storage
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.RawMediaCloudinaryStorage'

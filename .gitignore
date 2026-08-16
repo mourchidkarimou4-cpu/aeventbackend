@@ -12,3 +12,4 @@ staticfiles/
 .venv-system/
 node_modules/
 *.sqlite3
+backups/

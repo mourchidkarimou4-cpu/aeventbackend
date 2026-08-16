@@ -1,6 +1,9 @@
 import logging
-from rest_framework import viewsets, permissions, status, filters, parsers
-from rest_framework.decorators import action, api_view, permission_classes as pc
+from decimal import Decimal, InvalidOperation
+from rest_framework import viewsets, permissions, status, filters, parsers, generics
+from rest_framework.views import APIView
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
@@ -47,6 +50,23 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering_fields  = ['price', 'name', 'created_at']
     parser_classes   = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
+    def get_queryset(self):
+        qs = Product.objects.all().select_related('category').prefetch_related('available_addons')
+        user = self.request.user
+        if not (user and user.is_staff):
+            qs = qs.filter(is_available=True)
+        return qs
+
+    def get_object(self):
+        """Accepte l'identifiant (admin) OU le slug (pages publiques)."""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        try:
+            return generics.get_object_or_404(queryset, pk=int(lookup_value))
+        except (TypeError, ValueError):
+            return generics.get_object_or_404(queryset, slug=lookup_value)
+
     def get_serializer_class(self):
         if self.action == 'list':
             return ProductListSerializer
@@ -72,11 +92,21 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().prefetch_related('items__product')
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'reference', 'customer_whatsapp']
+    search_fields = ['reference', 'customer_name', 'customer_whatsapp']
+    ordering_fields = ['created_at', 'total_price', 'pickup_date']
 
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create', 'track', 'history']:
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
+
+    def get_throttles(self):
+        if self.action in ['create', 'track', 'history']:
+            self.throttle_scope = 'orders'
+            return [ScopedRateThrottle()]
+        return []
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -102,42 +132,76 @@ class OrderViewSet(viewsets.ModelViewSet):
         new_status = request.data.get('status')
         if new_status not in dict(Order.Status.choices):
             return Response({'error': 'Statut invalide.'}, status=400)
-        order.status = new_status
+
+        from .order_transitions import apply_status_transition
+        ok, error = apply_status_transition(order, new_status)
+        if not ok:
+            return Response({'error': error}, status=400)
         order.save(update_fields=['status'])
         return Response({'status': order.status, 'display': order.get_status_display()})
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def track(self, request):
+        """Suivi public d'une commande : référence + numéro WhatsApp du client."""
+        reference = request.query_params.get('reference', '').strip().upper()
+        whatsapp = request.query_params.get('customer_whatsapp', '').strip()
+        if not reference or not whatsapp:
+            return Response({'error': 'Référence et numéro WhatsApp requis.'}, status=400)
+        try:
+            order = Order.objects.prefetch_related('items__product').get(reference=reference)
+        except Order.DoesNotExist:
+            return Response({'error': 'Aucune commande trouvée avec cette référence.'}, status=404)
+        if order.customer_whatsapp.strip() != whatsapp:
+            return Response({'error': 'Numéro WhatsApp non associé à cette commande.'}, status=403)
+        serializer = OrderReadSerializer(order, context={'request': request})
+        return Response(serializer.data)
 
-@api_view(['POST'])
-@pc([permissions.AllowAny])
-def validate_promo(request):
-    code = request.data.get('code', '').strip().upper()
-    total = float(request.data.get('total', 0))
-
-    try:
-        promo = CodePromo.objects.get(code=code)
-    except CodePromo.DoesNotExist:
-        return Response({'valid': False, 'message': 'Code promo invalide.'}, status=400)
-
-    valid, message = promo.is_valid(total)
-    if not valid:
-        return Response({'valid': False, 'message': message}, status=400)
-
-    discount = promo.calculate_discount(total)
-    return Response({
-        'valid': True,
-        'code': promo.code,
-        'discount_type': promo.discount_type,
-        'discount_value': float(promo.discount_value),
-        'discount_amount': float(discount),
-        'new_total': float(total - discount),
-        'message': f"Code appliqué — {discount:,.0f} FCFA de réduction !",
-    })
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def history(self, request):
+        """Historique public des commandes d'un client (identité = numéro WhatsApp)."""
+        whatsapp = request.query_params.get('customer_whatsapp', '').strip()
+        if not whatsapp:
+            return Response({'error': 'Numéro WhatsApp requis.'}, status=400)
+        orders = Order.objects.filter(customer_whatsapp=whatsapp).prefetch_related('items__product').order_by('-created_at')
+        serializer = OrderReadSerializer(orders, many=True, context={'request': request})
+        return Response(serializer.data)
 
 
-class CodePromoViewSet(viewsets.ModelViewSet):
+class ValidatePromoView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'promo_validate'
+
+    def post(self, request):
+        code = request.data.get('code', '').strip().upper()
+        try:
+            total = Decimal(str(request.data.get('total', 0)))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Montant invalide.'}, status=400)
+
+        try:
+            promo = CodePromo.objects.get(code=code)
+        except CodePromo.DoesNotExist:
+            return Response({'valid': False, 'message': 'Code promo invalide.'}, status=400)
+
+        valid, message = promo.is_valid(total)
+        if not valid:
+            return Response({'valid': False, 'message': message}, status=400)
+
+        discount = promo.calculate_discount(total)
+        return Response({
+            'valid': True,
+            'code': promo.code,
+            'discount_type': promo.discount_type,
+            'discount_value': float(promo.discount_value),
+            'discount_amount': float(discount),
+            'new_total': float(total - discount),
+            'message': f"Code appliqué — {float(discount):,.0f} FCFA de réduction !",
+        })
+
+
+class CodePromoViewSet(BaseShopViewSet):
     queryset = CodePromo.objects.all().order_by('-created_at')
     serializer_class = CodePromoSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
 class ZoneLivraisonViewSet(BaseShopViewSet):
@@ -148,6 +212,7 @@ class ZoneLivraisonViewSet(BaseShopViewSet):
 class BonCadeauViewSet(viewsets.ModelViewSet):
     queryset = BonCadeau.objects.all().order_by('-created_at')
     serializer_class = BonCadeauSerializer
+    throttle_scope = 'public_post'
 
     def get_permissions(self):
         if self.action in ['create', 'validate_bon']:
@@ -157,9 +222,12 @@ class BonCadeauViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
     def validate_bon(self, request):
         code = request.data.get('code', '').strip().upper()
-        total = float(request.data.get('total', 0))
         try:
-            bon = BonCadeau.objects.get(code=code)
+            total = Decimal(str(request.data.get('total', 0)))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Montant invalide.'}, status=400)
+        try:
+            bon = BonCadeau.objects.get(code__iexact=code)
         except BonCadeau.DoesNotExist:
             return Response({'valid': False, 'message': 'Bon cadeau invalide.'}, status=400)
 
@@ -171,23 +239,24 @@ class BonCadeauViewSet(viewsets.ModelViewSet):
         if bon.expires_at and timezone.now() > bon.expires_at:
             return Response({'valid': False, 'message': 'Ce bon cadeau a expiré.'}, status=400)
 
-        discount = min(float(bon.montant), total)
+        discount = min(bon.montant, total)
         return Response({
             'valid': True,
             'code': bon.code,
             'montant': float(bon.montant),
-            'discount_amount': discount,
-            'new_total': max(0, total - discount),
-            'message': f'Bon cadeau appliqué — {discount:,.0f} FCFA de réduction !',
+            'discount_amount': float(discount),
+            'new_total': float(total - discount),
+            'message': f'Bon cadeau appliqué — {float(discount):,.0f} FCFA de réduction !',
         })
 
 
 class FideliteViewSet(viewsets.ModelViewSet):
     queryset = ProgrammeFidelite.objects.all().order_by('-points')
     serializer_class = ProgrammeFideliteSerializer
+    throttle_scope = 'public_post'
 
     def get_permissions(self):
-        if self.action in ['check', 'create']:
+        if self.action in ['check']:
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
 
@@ -214,9 +283,12 @@ class FideliteViewSet(viewsets.ModelViewSet):
     def add_points(self, request):
         wa = request.data.get('whatsapp', '').strip()
         nom = request.data.get('nom', '').strip()
-        points = int(request.data.get('points', 0))
-        if not wa or not points:
-            return Response({'error': 'WhatsApp et points requis.'}, status=400)
+        try:
+            points = int(request.data.get('points', 0))
+        except (TypeError, ValueError):
+            return Response({'error': 'Points invalides.'}, status=400)
+        if not wa or points <= 0:
+            return Response({'error': 'WhatsApp et points (positifs) requis.'}, status=400)
         fidelite, created = ProgrammeFidelite.objects.get_or_create(
             client_wa=wa,
             defaults={'client_nom': nom, 'points': 0, 'total_commandes': 0}
@@ -234,11 +306,31 @@ class FideliteViewSet(viewsets.ModelViewSet):
 class ParrainageViewSet(viewsets.ModelViewSet):
     queryset = Parrainage.objects.all().order_by('-created_at')
     serializer_class = ParrainageSerializer
+    throttle_scope = 'public_post'
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['parrain_wa']
+    search_fields = ['parrain_nom', 'filleul_nom', 'parrain_wa', 'code']
 
     def get_permissions(self):
-        if self.action in ['create', 'list']:
+        if self.action in ['create', 'by_wa']:
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def by_wa(self, request):
+        """Retrouve le code de parrainage associé à un numéro WhatsApp."""
+        wa = request.query_params.get('parrain_wa', '').strip()
+        if not wa:
+            return Response({'error': 'WhatsApp requis.'}, status=400)
+        parrainage = Parrainage.objects.filter(parrain_wa=wa).order_by('-created_at').first()
+        if not parrainage:
+            return Response({'found': False, 'message': 'Aucun code de parrainage trouvé pour ce numéro.'}, status=404)
+        return Response({
+            'found': True,
+            'code': parrainage.code,
+            'parrain_nom': parrainage.parrain_nom,
+            'parrain_wa': parrainage.parrain_wa,
+        })
 
 
 class PackViewSet(viewsets.ModelViewSet):

@@ -112,14 +112,17 @@ class Formation(models.Model):
             status__in=['confirmed', 'paid']
         ).count()
 
+    def _confirmed_count(self):
+        """Utilise l'annotation with_stats() du queryset si disponible, sinon requête."""
+        count = getattr(self, 'confirmed_count', None)
+        if count is None:
+            count = self.get_confirmed_count()
+        return count
+
     @property
     def available_seats(self):
-        """Nombre de places disponibles en temps réel.
-        
-        ⚠️ N+1 QUERY ISSUE: Cette property cause une requête par formation.
-        Préférer: annotate(confirmed_count=...) dans le queryset
-        """
-        confirmed = self.get_confirmed_count()
+        """Nombre de places disponibles en temps réel (0 requête si annoté)."""
+        confirmed = self._confirmed_count()
         return max(0, self.total_seats - confirmed)
 
     @property
@@ -130,7 +133,7 @@ class Formation(models.Model):
     def fill_percentage(self):
         if self.total_seats == 0:
             return 100
-        confirmed = self.get_confirmed_count()
+        confirmed = self._confirmed_count()
         return int((confirmed / self.total_seats) * 100)
 
     @property
@@ -198,12 +201,14 @@ class Reservation(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.reference:
-            import random, string
-            self.reference = 'AC' + ''.join(random.choices(string.digits, k=6))
+            import secrets
+            while True:
+                ref = 'AC' + f"{secrets.randbelow(100_000_000):08d}"
+                if not Reservation.objects.filter(reference=ref).exists():
+                    self.reference = ref
+                    break
         super().save(*args, **kwargs)
 
-
-import cloudinary.models as cld
 
 class FormationPresentielle(models.Model):
     DOMAINE_CHOICES = [
@@ -217,7 +222,7 @@ class FormationPresentielle(models.Model):
     edition         = models.CharField(max_length=100, blank=True)
     domaine         = models.CharField(max_length=50, choices=DOMAINE_CHOICES, default='patisserie')
     description     = models.TextField(blank=True)
-    affiche         = cld.CloudinaryField('affiche', folder='ams/formations', blank=True, null=True)
+    affiche         = models.URLField(max_length=500, blank=True, null=True)
     est_gratuite    = models.BooleanField(default=True)
     prix            = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True)
     has_bourses     = models.BooleanField(default=False)
@@ -267,8 +272,8 @@ class DossierCandidature(models.Model):
     telephone       = models.CharField(max_length=20)
     date_naissance  = models.DateField(null=True, blank=True)
     lettre_motivation = models.TextField(blank=True)
-    piece_identite  = cld.CloudinaryField('piece_identite', folder='ams/dossiers', blank=True, null=True)
-    photo_identite  = cld.CloudinaryField('photo_identite', folder='ams/dossiers', blank=True, null=True)
+    piece_identite  = models.URLField(max_length=500, blank=True, null=True)
+    photo_identite  = models.URLField(max_length=500, blank=True, null=True)
     statut          = models.CharField(max_length=20, choices=STATUT_CHOICES, default='soumis')
     created_at      = models.DateTimeField(auto_now_add=True)
 

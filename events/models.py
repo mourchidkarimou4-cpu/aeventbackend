@@ -1,10 +1,13 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 import os
+import uuid
 
 
 def validate_print_file(file):
     """Valide que le fichier uploadé est sécurisé et du bon type."""
+    from core.validators import sniff_mime
+
     allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg']
     max_size_mb = 50
 
@@ -12,6 +15,11 @@ def validate_print_file(file):
     if ext not in allowed_extensions:
         raise ValidationError(
             f"Format non autorisé : {ext}. Formats acceptés : PDF, PNG, JPG."
+        )
+    # Vérification par magic bytes : le content_type/extension est falsifiable
+    if sniff_mime(file) not in {'application/pdf', 'image/png', 'image/jpeg'}:
+        raise ValidationError(
+            "Contenu non reconnu. Formats acceptés : PDF, PNG, JPG."
         )
     if file.size > max_size_mb * 1024 * 1024:
         raise ValidationError(
@@ -127,6 +135,10 @@ class PrintFile(models.Model):
         upload_to=print_file_upload_path,
         validators=[validate_print_file],
         verbose_name="Fichier (PDF / PNG / JPG)"
+    )
+    claim_token = models.UUIDField(
+        default=uuid.uuid4, editable=False,
+        verbose_name="Jeton de propriété (liaison au devis)"
     )
     original_filename = models.CharField(max_length=255, blank=True)
     file_size_kb      = models.PositiveIntegerField(default=0)

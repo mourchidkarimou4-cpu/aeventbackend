@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import SiteSettings
+from core.validators import drf_validate_magic, IMAGE_MIMES
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -41,3 +42,21 @@ class GaleriePhotoSerializer(serializers.ModelSerializer):
 
     def get_image_url(self, obj):
         return absolute_file_url(self.context.get('request'), obj.image)
+
+
+from .models import Temoignage
+
+class TemoignageSerializer(serializers.ModelSerializer):
+    photo_url = serializers.SerializerMethodField(read_only=True)
+    photo = serializers.FileField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = Temoignage
+        fields = ['id', 'name', 'role', 'message', 'photo', 'photo_url', 'note', 'is_active', 'order', 'created_at']
+
+    def get_photo_url(self, obj):
+        return absolute_file_url(self.context.get('request'), obj.photo)
+
+    def validate_photo(self, value):
+        drf_validate_magic(value, IMAGE_MIMES, 'Photo')
+        return value

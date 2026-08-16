@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
+from core.fields import AbsoluteUrlField
 from .models import Formation, Reservation
 
 
@@ -10,6 +11,7 @@ class FormationListSerializer(serializers.ModelSerializer):
     countdown_seconds = serializers.IntegerField(read_only=True)
     current_price     = serializers.DecimalField(max_digits=10, decimal_places=0, read_only=True)
     level_display     = serializers.CharField(source='get_level_display', read_only=True)
+    image             = AbsoluteUrlField(required=False, allow_null=True)
 
     class Meta:
         model = Formation
@@ -40,10 +42,6 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_formation(self, formation):
-        if formation.is_full:
-            raise serializers.ValidationError(
-                "Cette formation est complète."
-            )
         if formation.start_datetime <= timezone.now():
             raise serializers.ValidationError(
                 "Les inscriptions pour cette formation sont closes."
@@ -51,12 +49,6 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         if formation.status not in ('published', 'full'):
             raise serializers.ValidationError("Formation non disponible.")
         return formation
-
-    def create(self, validated_data):
-        formation = validated_data['formation']
-        if formation.is_full:
-            validated_data['status'] = Reservation.Status.WAITLIST
-        return super().create(validated_data)
 
 
 class ReservationReadSerializer(serializers.ModelSerializer):
@@ -100,23 +92,45 @@ class FormationAdminSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_reservations_count(self, obj):
+        if obj.reservations.prefetched_objects:
+            return len(obj.reservations.all())
         return obj.reservations.count()
 
 
 from .models import FormationPresentielle, DossierCandidature
+from core.validators import drf_validate_magic, IMAGE_MIMES, DOCUMENT_MIMES
+
+
+def _absolute_url(request, value):
+    if not value:
+        return None
+    if value.startswith(('http://', 'https://')):
+        return value
+    if request:
+        return request.build_absolute_uri(value)
+    return value
 
 class FormationPresentiellSerializer(serializers.ModelSerializer):
     inscription_ouverte = serializers.ReadOnlyField()
     affiche_url = serializers.SerializerMethodField()
+    places_inscrites = serializers.SerializerMethodField()
 
     class Meta:
         model = FormationPresentielle
         fields = '__all__'
 
     def get_affiche_url(self, obj):
-        if obj.affiche:
-            return obj.affiche.url
-        return None
+        return _absolute_url(self.context.get('request'), obj.affiche)
+
+    def get_places_inscrites(self, obj):
+        val = getattr(obj, '_places_inscrites', None)
+        if val is None:
+            val = obj.dossiers.count()
+        return val
+
+    def validate_affiche(self, value):
+        drf_validate_magic(value, IMAGE_MIMES, 'Affiche')
+        return value
 
 
 class DossierCandidatureSerializer(serializers.ModelSerializer):
@@ -130,7 +144,40 @@ class DossierCandidatureSerializer(serializers.ModelSerializer):
         read_only_fields = ['statut', 'created_at']
 
     def get_piece_identite_url(self, obj):
-        return obj.piece_identite.url if obj.piece_identite else None
+        return _absolute_url(self.context.get('request'), obj.piece_identite)
 
     def get_photo_identite_url(self, obj):
-        return obj.photo_identite.url if obj.photo_identite else None
+        return _absolute_url(self.context.get('request'), obj.photo_identite)
+
+    def validate_piece_identite(self, value):
+        drf_validate_magic(value, DOCUMENT_MIMES, 'Pièce d\'identité')
+        return value
+
+    def validate_photo_identite(self, value):
+        drf_validate_magic(value, IMAGE_MIMES, 'Photo d\'identité')
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if request and request.method == 'POST':
+            formation = attrs.get('formation')
+            telephone = attrs.get('telephone')
+            if formation is None:
+                raise serializers.ValidationError('Formation requise.')
+            if not formation.is_active:
+                raise serializers.ValidationError('Cette formation n\'est plus disponible.')
+            if not formation.inscription_ouverte:
+                raise serializers.ValidationError(
+                    'Les inscriptions pour cette formation sont clôturées.'
+                )
+            if formation.nb_places is not None:
+                existing = DossierCandidature.objects.filter(formation=formation).count()
+                if existing >= formation.nb_places:
+                    raise serializers.ValidationError('Cette formation est complète.')
+            if telephone and DossierCandidature.objects.filter(
+                formation=formation, telephone=telephone
+            ).exists():
+                raise serializers.ValidationError({
+                    'telephone': 'Un dossier existe déjà pour ce numéro sur cette formation.'
+                })
+        return attrs

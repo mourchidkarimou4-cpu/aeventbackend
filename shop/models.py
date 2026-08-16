@@ -2,7 +2,6 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 import cloudinary.models
-from core.models import compress_image
 
 
 class Category(models.Model):
@@ -105,9 +104,6 @@ class Product(models.Model):
         verbose_name_plural = "Produits"
         ordering = ['-is_featured', 'name']
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-
     def __str__(self):
         tag = " [BOX]" if self.is_box else ""
         return f"{self.name}{tag} — {self.price} FCFA"
@@ -131,6 +127,10 @@ class Order(models.Model):
     # Commande
     status        = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     total_price   = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0,
+        verbose_name="Réduction appliquée (FCFA)")
+    promo_code    = models.CharField(max_length=50, blank=True, verbose_name="Code promo appliqué")
+    bon_code      = models.CharField(max_length=20, blank=True, verbose_name="Bon cadeau appliqué")
     pickup_date   = models.DateField(verbose_name="Date de retrait souhaitée")
     pickup_time   = models.TimeField(verbose_name="Heure de retrait souhaitée")
 
@@ -150,8 +150,12 @@ class Order(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.reference:
-            import random, string
-            self.reference = 'AE' + ''.join(random.choices(string.digits, k=6))
+            import secrets
+            while True:
+                ref = 'AE' + f"{secrets.randbelow(100_000_000):08d}"
+                if not Order.objects.filter(reference=ref).exists():
+                    self.reference = ref
+                    break
         super().save(*args, **kwargs)
 
     def recalculate_total(self):
@@ -208,8 +212,16 @@ class CodePromo(models.Model):
     def __str__(self):
         return f"{self.code} — {self.discount_value}{'%' if self.discount_type == 'percent' else ' FCFA'}"
 
+    def _coerce_total(self, order_total):
+        from decimal import Decimal, InvalidOperation
+        try:
+            return Decimal(str(order_total))
+        except (InvalidOperation, TypeError, ValueError):
+            return Decimal('0')
+
     def is_valid(self, order_total=0):
         from django.utils import timezone
+        order_total = self._coerce_total(order_total)
         if not self.is_active:
             return False, "Ce code promo n'est plus actif."
         if self.used_count >= self.max_uses:
@@ -221,8 +233,10 @@ class CodePromo(models.Model):
         return True, "Code valide."
 
     def calculate_discount(self, order_total):
+        from decimal import Decimal
+        order_total = self._coerce_total(order_total)
         if self.discount_type == 'percent':
-            return min(order_total * self.discount_value / 100, order_total)
+            return min(order_total * self.discount_value / Decimal('100'), order_total)
         return min(self.discount_value, order_total)
 
 
