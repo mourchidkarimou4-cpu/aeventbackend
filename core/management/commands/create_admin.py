@@ -14,8 +14,16 @@ class Command(BaseCommand):
         username = os.environ.get('ADMIN_USERNAME', 'admin')
         password = os.environ.get('ADMIN_INITIAL_PASSWORD')
 
-        if User.objects.filter(username=username).exists() or User.objects.filter(email=email).exists():
-            self.stdout.write('Superuser existe déjà.')
+        user = User.objects.filter(username=username).first() or User.objects.filter(email=email).first()
+
+        if user:
+            if password:
+                user.email = email
+                user.set_password(password)
+                user.save(update_fields=['email', 'password'])
+                self.stdout.write(self.style.SUCCESS(f'Mot de passe réinitialisé : {username} / {email}'))
+            else:
+                self.stdout.write('Superuser existe déjà (ADMIN_INITIAL_PASSWORD non défini).')
             return
 
         if not password:
